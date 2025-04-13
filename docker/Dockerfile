@@ -1,6 +1,12 @@
 FROM httpd:2.4-alpine
 
-RUN apk add --no-cache certbot certbot-dns-route53
+# This file is based on https://github.com/BytemarkHosting/docker-webdav with
+# adjustments to enable LetsEncrypt certbot DNS-01 challenge authentication on
+# AWS Route 53
+
+RUN apk add --no-cache certbot certbot-dns-route53 openssl
+
+COPY conf/ conf/
 
 RUN \
     # Create empty default DocumentRoot
@@ -12,20 +18,37 @@ RUN \
     \
     # Enable DAV modules
     && for i in dav dav_fs; do \
-        sed -i -e "/^#LoadModule ${i}_module.*/s/^#//" "conf/httpd.conf"; \
+        sed -i -e "/^#LoadModule ${i}_module.*/s/^#//" "conf/httpd.conf" \
     done \
     \
     # Make sure authentication modules are enabled
     && for i in authn_core authn_file authz_core authz_user auth_basic auth_digest; do \
-        sed -i -e "/^#LoadModule ${i}_module.*/s/^#//" "conf/httpd.conf"; \
+        sed -i -e "/^#LoadModule ${i}_module.*/s/^#//" "conf/httpd.conf" \
     done \
     \
     # Make sure other modules are enabled
     && for i in alias headers mime setenvif; do \
-        sed -i -e "/^#LoadModule ${i}_module.*/s/^#//" "conf/httpd.conf"; \
+        sed -i -e "/^#LoadModule ${i}_module.*/s/^#//" "conf/httpd.conf" \
     done \
     \
     # Run httpd as "www-data"
     && for i in User Group; do \
-        sed -i -e "s|^$i .*|$i www-data|" "conf/httpd.conf"; \
-    done
+        sed -i -e "s|^$i .*|$i www-data|" "conf/httpd.conf" \
+    done \
+    \
+    # Include enabled configs and sites
+    && printf '%s\n' "Include conf/conf-enabled/*.conf" \
+        >> "conf/httpd.conf" \
+    && printf '%s\n' "Include conf/sites-enabled/*.conf" \
+        >> "conf/httpd.conf" \
+    \
+    # Enable dav and default site
+    && mkdir -p "conf/conf-enabled" \
+    && mkdir -p "conf/sites-enabled" \
+    && ln -s ../conf-available/dav.conf "conf/conf-enabled" \
+    && ln -s ../sites-available/default.conf "conf/sites-enabled"
+
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+EXPOSE 80/tcp 443/tcp
+ENTRYPOINT [ "docker-entrypoint.sh" ]
+CMD [ "httpd-foreground" ]
