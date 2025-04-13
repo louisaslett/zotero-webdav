@@ -116,7 +116,7 @@ EOF
           --agree-tos \
           -n
         # Setup cron to check certificate renewal daily
-        (crontab -l 2>/dev/null; echo "38 4 * * * certbot certonly --dns-route53 -d $SSL_DOMAIN -m $SSL_EMAIL --agree-tos -n --post-hook \"apachectl graceful\"") | crontab -
+        (crontab -l 2>/dev/null || true; echo "38 4 * * * certbot certonly --dns-route53 -d $SSL_DOMAIN -m $SSL_EMAIL --agree-tos -n --post-hook \"apachectl graceful\"") | crontab -
         # Start cron daemon (NOTE: assume we always recreate container by doing this, could improve to bring cron up on restart)
         crond
         # Enable SSL Apache modules
