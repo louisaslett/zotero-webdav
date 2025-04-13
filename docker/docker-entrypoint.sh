@@ -16,6 +16,7 @@ set -e
 #   ANONYMOUS_METHODS
 #   SSL_CERT
 #   SSL_DOMAIN
+#   SSL_EMAIL
 #   AWS_ACCESS_KEY_ID
 #   AWS_SECRET_ACCESS_KEY
 
@@ -97,27 +98,53 @@ fi
 # challenge authentication with AWS Route 53.
 # Note the required access keys must also be in the relevant environment
 # variables, and the cert domain must be provided.
-if [ "${SSL_CERT:-none}" = "certbot-dns-route53" ] && [ "x$SSL_DOMAIN" != "x" ] && [ "x$AWS_ACCESS_KEY_ID" != "x" ] && [ "x$AWS_SECRET_ACCESS_KEY" != "x" ]; then
-    # Place AWS keys into credentials file, since they'll be needed for
-    # certificate renewal
-    mkdir -p /root/.aws
-    cat <<EOF > /root/.aws/credentials
+if [ "${SSL_CERT:-none}" = "certbot-dns-route53" ]; then
+    if [ "x$SSL_DOMAIN" != "x" ] && [ "x$SSL_EMAIL" != "x" ] && [ "x$AWS_ACCESS_KEY_ID" != "x" ] && [ "x$AWS_SECRET_ACCESS_KEY" != "x" ]; then
+        # Place AWS keys into credentials file, since they'll be needed for
+        # certificate renewal
+        mkdir -p /root/.aws
+        cat <<EOF > /root/.aws/credentials
 [default]
 aws_access_key_id=${AWS_ACCESS_KEY_ID}
 aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}
 EOF
-    # Get initial certificate
-    certbot certonly \
-      --dns-route53 \
-      -d $SSL_DOMAIN
-    # Setup cron to check certificate renewal daily
-    (crontab -l 2>/dev/null; echo "38 4 * * * certbot certonly --dns-route53 -d $SSL_DOMAIN") | crontab -
+        # Get initial certificate
+        certbot certonly \
+          --dns-route53 \
+          -d $SSL_DOMAIN \
+          -m $SSL_EMAIL \
+          --agree-tos \
+          -n
+        # Setup cron to check certificate renewal daily
+        (crontab -l 2>/dev/null; echo "38 4 * * * certbot certonly --dns-route53 -d $SSL_DOMAIN -m $SSL_EMAIL --agree-tos -n --post-hook \"apachectl graceful\"") | crontab -
+        # Start cron daemon (NOTE: assume we always recreate container by doing this, could improve to bring cron up on restart)
+        crond
+        # Enable SSL Apache modules
+        for i in http2 ssl; do
+            sed -e "/^#LoadModule ${i}_module.*/s/^#//" \
+                -i "$HTTPD_PREFIX/conf/httpd.conf"
+        done
+        # Enable LetsEncrypt SSL vhost
+        ln -sf ../sites-available/letsencrypt-ssl.conf \
+            "$HTTPD_PREFIX/conf/sites-enabled"
+        # Update vhost file with correct domain information
+        sed -e "s/SSL_DOMAIN/${SSL_DOMAIN}/g" -i "$HTTPD_PREFIX/conf/sites-available/letsencrypt-ssl.conf"
+    else
+        missing=""
+        [ -z "$SSL_DOMAIN" ] && missing="$missing SSL_DOMAIN"
+        [ -z "$SSL_EMAIL" ] && missing="$missing SSL_EMAIL"
+        [ -z "$AWS_ACCESS_KEY_ID" ] && missing="$missing AWS_ACCESS_KEY_ID"
+        [ -z "$AWS_SECRET_ACCESS_KEY" ] && missing="$missing AWS_SECRET_ACCESS_KEY"
+        printf '%s\n' "ERROR: 'certbot-dns-route53' specified, but the following required environment variables are missing: $missing" >&2
+        exit 1
+    fi
 fi
 
 # This will either be the self-signed certificate generated above or one that
 # has been bind mounted in by the user
+# It will *not* trigger for LetsEncrypt as we handle that separately above
 if [ -e /privkey.pem ] && [ -e /cert.pem ]; then
-    # Enable SSL Apache modules.
+    # Enable SSL Apache modules
     for i in http2 ssl; do
         sed -e "/^#LoadModule ${i}_module.*/s/^#//" \
             -i "$HTTPD_PREFIX/conf/httpd.conf"

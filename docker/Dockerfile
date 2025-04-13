@@ -18,22 +18,22 @@ RUN \
     \
     # Enable DAV modules
     && for i in dav dav_fs; do \
-        sed -i -e "/^#LoadModule ${i}_module.*/s/^#//" "conf/httpd.conf" \
+        sed -i -e "/^#LoadModule ${i}_module.*/s/^#//" "conf/httpd.conf"; \
     done \
     \
     # Make sure authentication modules are enabled
     && for i in authn_core authn_file authz_core authz_user auth_basic auth_digest; do \
-        sed -i -e "/^#LoadModule ${i}_module.*/s/^#//" "conf/httpd.conf" \
+        sed -i -e "/^#LoadModule ${i}_module.*/s/^#//" "conf/httpd.conf"; \
     done \
     \
     # Make sure other modules are enabled
     && for i in alias headers mime setenvif; do \
-        sed -i -e "/^#LoadModule ${i}_module.*/s/^#//" "conf/httpd.conf" \
+        sed -i -e "/^#LoadModule ${i}_module.*/s/^#//" "conf/httpd.conf"; \
     done \
     \
     # Run httpd as "www-data"
     && for i in User Group; do \
-        sed -i -e "s|^$i .*|$i www-data|" "conf/httpd.conf" \
+        sed -i -e "s|^$i .*|$i www-data|" "conf/httpd.conf"; \
     done \
     \
     # Include enabled configs and sites
