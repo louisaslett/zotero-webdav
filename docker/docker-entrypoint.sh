@@ -1,8 +1,10 @@
 #!/bin/sh
 
 # This file is based on https://github.com/BytemarkHosting/docker-webdav with
-# adjustments to enable LetsEncrypt certbot DNS-01 challenge authentication on
-# AWS Route 53
+# adjustments to use Debian instead of Alpine and to enable LetsEncrypt certbot
+# DNS-01 challenge authentication on AWS Route 53.
+# Switch to Debian was necessary because recent Alpine versions are broken for
+# WebDAV uploads (https://gitlab.alpinelinux.org/alpine/aports/-/issues/13112)
 
 set -e
 
@@ -118,15 +120,18 @@ EOF
         # Setup cron to check certificate renewal daily
         (crontab -l 2>/dev/null || true; echo "38 4 * * * certbot certonly --dns-route53 -d $SSL_DOMAIN -m $SSL_EMAIL --agree-tos -n --post-hook \"apachectl graceful\"") | crontab -
         # Start cron daemon (NOTE: assume we always recreate container by doing this, could improve to bring cron up on restart)
-        crond
+        service cron start
         # Enable SSL Apache modules
         for i in http2 ssl; do
             sed -e "/^#LoadModule ${i}_module.*/s/^#//" \
                 -i "$HTTPD_PREFIX/conf/httpd.conf"
         done
-        # Enable LetsEncrypt SSL vhost
+        # Enable LetsEncrypt SSL vhost ...
         ln -sf ../sites-available/letsencrypt-ssl.conf \
             "$HTTPD_PREFIX/conf/sites-enabled"
+        # ... and disable non-SSL
+        rm "$HTTPD_PREFIX/conf/sites-enabled/default.conf"
+        sed -i 's/^Listen 80/#Listen 80/' "$HTTPD_PREFIX/conf/httpd.conf"
         # Update vhost file with correct domain information
         sed -e "s/SSL_DOMAIN/${SSL_DOMAIN}/g" -i "$HTTPD_PREFIX/conf/sites-available/letsencrypt-ssl.conf"
     else
@@ -149,9 +154,12 @@ if [ -e /privkey.pem ] && [ -e /cert.pem ]; then
         sed -e "/^#LoadModule ${i}_module.*/s/^#//" \
             -i "$HTTPD_PREFIX/conf/httpd.conf"
     done
-    # Enable SSL vhost
+    # Enable SSL vhost ...
     ln -sf ../sites-available/default-ssl.conf \
         "$HTTPD_PREFIX/conf/sites-enabled"
+    # ... and disable non-SSL
+    rm "$HTTPD_PREFIX/conf/sites-enabled/default.conf"
+    sed -i 's/^Listen 80/#Listen 80/' "$HTTPD_PREFIX/conf/httpd.conf"
 fi
 
 # Create directories for Dav data and lock database

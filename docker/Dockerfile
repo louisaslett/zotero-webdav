@@ -1,10 +1,14 @@
-FROM httpd:2.4-alpine
+FROM httpd:2.4-bookworm
 
 # This file is based on https://github.com/BytemarkHosting/docker-webdav with
-# adjustments to enable LetsEncrypt certbot DNS-01 challenge authentication on
-# AWS Route 53
+# adjustments to use Debian instead of Alpine and to enable LetsEncrypt certbot
+# DNS-01 challenge authentication on AWS Route 53.
+# Switch to Debian was necessary because recent Alpine versions are broken for
+# WebDAV uploads (https://gitlab.alpinelinux.org/alpine/aports/-/issues/13112)
 
-RUN apk add --no-cache certbot certbot-dns-route53 openssl
+RUN apt-get update \
+    && apt-get install -y certbot python3-certbot-dns-route53 cron \
+    && rm -rf /var/cache/apt/archives /var/lib/apt/lists
 
 COPY conf/ conf/
 
