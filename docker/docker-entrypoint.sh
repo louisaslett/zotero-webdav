@@ -102,6 +102,8 @@ fi
 # variables, and the cert domain must be provided.
 if [ "${SSL_CERT:-none}" = "certbot-dns-route53" ]; then
     if [ "x$SSL_DOMAIN" != "x" ] && [ "x$SSL_EMAIL" != "x" ] && [ "x$AWS_ACCESS_KEY_ID" != "x" ] && [ "x$AWS_SECRET_ACCESS_KEY" != "x" ]; then
+        # Start cron daemon which will be needed by certbot for automated renewals
+        service cron start
         # Place AWS keys into credentials file, since they'll be needed for
         # certificate renewal
         mkdir -p /root/.aws
@@ -116,11 +118,8 @@ EOF
           -d $SSL_DOMAIN \
           -m $SSL_EMAIL \
           --agree-tos \
-          -n
-        # Setup cron to check certificate renewal daily
-        (crontab -l 2>/dev/null || true; echo "38 4 * * * certbot certonly --dns-route53 -d $SSL_DOMAIN -m $SSL_EMAIL --agree-tos -n --post-hook \"apachectl graceful\"") | crontab -
-        # Start cron daemon (NOTE: assume we always recreate container by doing this, could improve to bring cron up on restart)
-        service cron start
+          -n \
+          --post-hook "apachectl graceful"
         # Enable SSL Apache modules
         for i in http2 ssl; do
             sed -e "/^#LoadModule ${i}_module.*/s/^#//" \
